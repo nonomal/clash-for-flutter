@@ -1,5 +1,5 @@
 name: clash_for_flutter
-description: A new Flutter project.
+description: A multi-platform Clash client.
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -17,10 +17,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.1+1
+version: 1.2.7
 
 environment:
-  sdk: '>=2.18.4 <3.0.0'
+  sdk: '>=3.2.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -33,30 +33,38 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  intl: ^0.17.0
-  dio: ^4.0.6
-  window_manager: ^0.2.7
-  launch_at_startup: ^0.2.0
-  tray_manager: ^0.2.0
-  flutter_modular: ^5.0.3
-  path_provider: ^2.0.11
-  ffi: ^2.0.1
-  vclibs: ^0.1.0
-  protocol_handler: ^0.1.4
+
+  window_manager: ^0.3.8
+  launch_at_startup: ^0.2.2
+  tray_manager: ^0.2.1
+  desktop_lifecycle: ^0.1.1
   proxy_manager: ^0.0.3
-  file_picker: ^5.1.0
+  local_notifier: ^0.1.5
 
-  dart_json_mapper: ^2.2.7
+  dio: ^5.3.3
+  flutter_modular: ^6.3.2
+  path_provider: ^2.1.0
+  ffi: ^2.1.0
+  file_picker: ^6.1.1
+  package_info_plus: ^5.0.1
+  url_launcher: ^6.2.1
+  web_socket_channel: ^2.4.0
+
+  dart_json_mapper: ^2.2.9
   dart_json_mapper_mobx: ^2.0.5
-  mobx: ^2.1.3
+  mobx: ^2.2.1
   flutter_mobx: ^2.0.6+5
-  mobx_triple: ^1.1.3+1
 
-  easy_sidemenu: ^0.4.1
-  asuka: ^2.0.1+3
-  settings_yaml: ^4.0.0
+  easy_sidemenu: ^0.5.0
+  asuka: ^2.2.0
+  settings_yaml: ^7.0.0
   settings_ui: ^2.0.2
-  cupertino_icons: ^1.0.5
+  cupertino_icons: ^1.0.6
+  data_table_2: ^2.5.8
+  timeago: ^3.6.0
+  flutter_staggered_grid_view: ^0.7.0
+  extended_text: ^12.0.0
+  protocol_handler: 0.1.6
 
 dev_dependencies:
   flutter_test:
@@ -67,10 +75,10 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^2.0.0
-  build_runner: ^2.3.2
-  ffigen: ^7.2.0
-  mobx_codegen: ^2.1.1
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.6
+  ffigen: ^11.0.0
+  mobx_codegen: ^2.3.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -115,6 +123,6 @@ ffigen:
   output: 'lib/clash_generated_bindings.dart'
   headers:
     entry-points:
-      - 'core/dist/libclash.h'
+      - 'core/libclash.h'
   llvm-path:
-    - 'C:/Users/Casbin/Scoop/apps/llvm/current'
+    - 'D:\Scoop\apps\llvm\current'

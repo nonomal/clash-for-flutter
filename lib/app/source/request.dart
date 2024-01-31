@@ -1,39 +1,48 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:clash_for_flutter/app/bean/config_bean.dart';
+import 'package:clash_for_flutter/app/bean/connection_bean.dart';
 import 'package:clash_for_flutter/app/bean/group_bean.dart';
+import 'package:clash_for_flutter/app/bean/log_bean.dart';
+import 'package:clash_for_flutter/app/bean/net_speed.dart';
 import 'package:clash_for_flutter/app/bean/profile_url_bean.dart';
 import 'package:clash_for_flutter/app/bean/proxies_bean.dart';
 import 'package:clash_for_flutter/app/bean/proxy_bean.dart';
 import 'package:clash_for_flutter/app/bean/proxy_providers_bean.dart';
 import 'package:clash_for_flutter/app/bean/sub_userinfo_bean.dart';
+import 'package:clash_for_flutter/app/enum/type_enum.dart';
 import 'package:clash_for_flutter/app/utils/constants.dart';
 import 'package:dart_json_mapper/dart_json_mapper.dart';
 import 'package:dio/dio.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class Request {
-  final _clashDio = Dio(
+  final Dio _clashDio = Dio(
     BaseOptions(
-      baseUrl: "http://${Constants.localhost}:9090",
-      connectTimeout: 3000,
-      receiveTimeout: 3000,
+      baseUrl: "http://${Constants.rustAddr}",
+      connectTimeout: const Duration(seconds: 3),
+      receiveTimeout: const Duration(seconds: 5),
+    ),
+  );
+
+  final _dio = Dio(
+    BaseOptions(
+      headers: {'User-Agent': 'Clash for Flutter'},
+      connectTimeout: const Duration(seconds: 3),
     ),
   );
 
   Future<Response> downFile({
     required String urlPath,
     required String savePath,
-    int? connectTimeout,
-    int? receiveTimeout,
     void Function(int, int)? onReceiveProgress,
   }) {
-    return Dio(BaseOptions(
-      headers: {'User-Agent': 'Clash For Flutter'},
-      connectTimeout: connectTimeout ?? 20000,
-      receiveTimeout: receiveTimeout ?? 20000,
-    )).download(urlPath, savePath, onReceiveProgress: onReceiveProgress);
+    return _dio.download(
+      urlPath,
+      savePath,
+      onReceiveProgress: onReceiveProgress,
+    );
   }
 
   /// 下载订阅
@@ -45,19 +54,35 @@ class Request {
     var file = "${time.millisecondsSinceEpoch}.yaml";
     var savePath = "$profilesDir/$file";
     return downFile(urlPath: profile.url, savePath: savePath).then((resp) {
+      String? filename;
+      // 解析文件名
       if (profile.name.isEmpty) {
-        resp.headers["content-disposition"]?.forEach((v) {
-          var filename = HeaderValue.parse(v).parameters["filename"];
-          if (filename != null) {
-            profile.name = filename;
-          } else {
-            profile.name = file;
-          }
-        });
+        var headerDis = resp.headers.value("content-disposition");
+        if (headerDis != null) {
+          var disposition = HeaderValue.parse(headerDis);
+          disposition.parameters.forEach((key, value) {
+            if (key.startsWith("filename")) {
+              if (key == "filename*") {
+                filename = Uri.decodeComponent((value ?? "").split("'").last);
+              } else {
+                filename = value;
+              }
+            }
+          });
+        }
+        // 赋值文件名
+        if (filename?.isNotEmpty ?? false) {
+          profile.name = filename!;
+        } else {
+          profile.name = file;
+        }
       }
-      resp.headers["subscription-userinfo"]?.forEach((v) {
-        profile.userinfo = SubUserinfo.formHString(v);
-      });
+      // 解析流量信息
+      var headerInfo = resp.headers.value("subscription-userinfo");
+      if (headerInfo != null) {
+        profile.userinfo = SubUserinfo.formHString(headerInfo);
+      }
+      // 解析更新间隔
       var value = resp.headers.value("profile-update-interval");
       if (value != null && profile.interval == 0) {
         profile.interval = int.parse(value);
@@ -66,6 +91,10 @@ class Request {
         ..time = time
         ..file = file;
     });
+  }
+
+  Future<Response> hello() async {
+    return _clashDio.get("/");
   }
 
   /// 获取所有代理
@@ -78,16 +107,14 @@ class Request {
   Future<dynamic> oneProxies(String name) async {
     var res = await _clashDio.get<Map<String, dynamic>>("/proxies/$name");
     var data = res.data?.containsKey("now");
-    return data == true
-        ? JsonMapper.fromMap<Group>(res.data)
-        : JsonMapper.fromMap<Proxy>(res.data);
+    return data == true ? JsonMapper.fromMap<Group>(res.data) : JsonMapper.fromMap<Proxy>(res.data);
   }
 
   /// 获取单个代理的延迟
-  Future<int?> getProxyDelay(String name) {
+  Future<int?> getProxyDelay(String name, String url) {
     return _clashDio.get<Map>("/proxies/$name/delay", queryParameters: {
       "timeout": 2900,
-      "url": 'http://www.gstatic.com/generate_204'
+      "url": url,
     }).then((res) => res.data?["delay"]);
   }
 
@@ -139,19 +166,38 @@ class Request {
     return res.data?["version"];
   }
 
-  Future<Stream<Uint8List>?> traffic() {
-    var resp = _clashDio.get<ResponseBody>(
-      "/traffic",
-      options: Options(responseType: ResponseType.stream, receiveTimeout: 0),
-    );
-    return resp.then((res) => res.data?.stream);
+  Stream<NetSpeed?> traffic() {
+    var channel = WebSocketChannel.connect(Uri.parse("ws://${Constants.rustAddr}/traffic"));
+    return channel.stream.map((event) => JsonMapper.deserialize<NetSpeed>(event));
   }
 
-  Future<Stream<Uint8List>?> logs() {
-    var resp = _clashDio.get<ResponseBody>(
-      "/logs",
-      options: Options(responseType: ResponseType.stream, receiveTimeout: 0),
-    );
-    return resp.then((res) => res.data?.stream);
+  Stream<LogData?> logs(LogLevel? level) {
+    var uri = Uri.parse("ws://${Constants.rustAddr}/logs?level=${level?.value ?? ""}");
+    var channel = WebSocketChannel.connect(uri);
+    return channel.stream.map((event) => JsonMapper.deserialize<LogData>(event)?..time = DateTime.now());
+  }
+
+  Stream<Snapshot?> connections() {
+    var channel = WebSocketChannel.connect(Uri.parse("ws://${Constants.rustAddr}/connections"));
+    return channel.stream.map((event) => JsonMapper.deserialize<Snapshot>(event));
+  }
+
+  Future<bool> closeAllConnections() async {
+    var resp = await _clashDio.delete<ResponseBody>("/connections");
+    return resp.statusCode == HttpStatus.noContent;
+  }
+
+  Future<bool> closeConnections(String id) async {
+    var resp = await _clashDio.delete<ResponseBody>("/connections/$id");
+    return resp.statusCode == HttpStatus.noContent;
+  }
+
+  Future<String> latest() async {
+    var resp = await Dio().get<Map<String, dynamic>>(Constants.releaseUrl);
+    if (resp.data?.containsKey("tag_name") ?? false) {
+      return resp.data!["tag_name"];
+    } else {
+      throw resp.data?["message"];
+    }
   }
 }

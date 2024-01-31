@@ -2,13 +2,15 @@ import 'dart:io';
 
 import 'package:asuka/asuka.dart';
 import 'package:clash_for_flutter/app/component/sys_app_bar.dart';
-import 'package:clash_for_flutter/app/source/global_config.dart';
+import 'package:clash_for_flutter/app/exceptions/message_exception.dart';
+import 'package:clash_for_flutter/app/source/app_config.dart';
+import 'package:clash_for_flutter/app/source/core_config.dart';
+import 'package:clash_for_flutter/app/source/logs_subscription.dart';
 import 'package:clash_for_flutter/app/source/request.dart';
 import 'package:clash_for_flutter/app/utils/constants.dart';
-import 'package:ffi/ffi.dart';
+import 'package:clash_for_flutter/core_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:window_manager/window_manager.dart';
 
 class InitPage extends StatefulWidget {
   const InitPage({super.key});
@@ -18,8 +20,10 @@ class InitPage extends StatefulWidget {
 }
 
 class _InitPageState extends State<InitPage> {
-  final _config = Modular.get<GlobalConfig>();
+  final _config = Modular.get<AppConfig>();
+  final _core = Modular.get<CoreConfig>();
   final _request = Modular.get<Request>();
+  final _logs = Modular.get<LogsSubscription>();
   double _loadingProgress = 0;
   bool _isLoading = false;
 
@@ -29,54 +33,66 @@ class _InitPageState extends State<InitPage> {
     super.initState();
   }
 
-  void _init() async {
-    try {
+  _init() {
+    return Future(() async {
+      if (!await _request.hello().then((res) => res.statusCode == HttpStatus.ok)) {
+        throw MessageException("无法连接到内核，请尝试重启应用");
+      }
+
+      _core.init();
       await _config.init();
-      var mmdb = File("${_config.configDir.path}${Constants.mmdb}");
-      if (_config.clash.mmdbVerify(mmdb.path.toNativeUtf8().cast()) == 0) {
+
+      var m = File("${Constants.homeDir.path}${Constants.mmdb}");
+      if (!(await CoreControl.verifyMMDB(m.path) ?? false)) {
         setState(() => _isLoading = true);
         await _request
             .downFile(
-              urlPath: Constants.mmdbUrl,
-              savePath: mmdb.path,
-              receiveTimeout: 0,
+              urlPath: _config.clashForMe.mmdbUrl,
+              savePath: m.path,
               onReceiveProgress: (received, total) {
-                setState(() {
-                  _loadingProgress = received / total;
-                  windowManager.setProgressBar(_loadingProgress);
-                });
+                setState(() => _loadingProgress = received / total);
               },
             )
             .then((value) => setState(() => _isLoading = false));
       }
-      if (_config.start()) {
-        Modular.to.navigate("/tab");
-      } else {
-        Asuka.showSnackBar(const SnackBar(content: Text("启动服务失败")));
+
+      await _core.asyncConfig();
+
+      // 已经开启tun直接跳转
+      if (_config.tunIf && _core.tunEnable) {
+        return;
       }
-    } catch (e) {
+
+      // 同步当前 profile
+      if (await _config.asyncProfile()) {
+        return;
+      }
+    }).then((value) async {
+      await _core.asyncConfig();
+      _logs.startSubLogs(); // 启动日志订阅
+      Modular.to.navigate("/tab");
+    }).onError((error, stackTrace) {
       Modular.to.navigate("/error");
-      Asuka.showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+      Asuka.showSnackBar(SnackBar(content: Text(error.toString())));
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return _isLoading
-        ? LoadingWidget(value: _loadingProgress)
-        : const RouterOutlet();
+    return _isLoading ? LoadingWidget(value: _loadingProgress) : const RouterOutlet();
   }
 }
 
 class LoadingWidget extends StatelessWidget {
-  const LoadingWidget({Key? key, required this.value}) : super(key: key);
+  const LoadingWidget({super.key, required this.value});
 
   final double value;
 
   @override
   Widget build(BuildContext context) {
+    var size = MediaQuery.of(context).size;
     return Scaffold(
-      appBar: const SysAppBar(title: Text("Clash For Flutter")),
+      appBar: const SysAppBar(title: Text("Clash for Flutter")),
       body: Center(
         child: SizedBox(
           height: 200,
@@ -85,7 +101,7 @@ class LoadingWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               SizedBox(
-                width: 450,
+                width: size.width * 0.6,
                 child: LinearProgressIndicator(
                   value: value,
                   backgroundColor: Colors.black12,

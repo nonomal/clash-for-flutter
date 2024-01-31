@@ -1,19 +1,21 @@
+import 'dart:io';
+
+import 'package:clash_for_flutter/app/bean/tun_bean.dart';
 import 'package:clash_for_flutter/app/enum/type_enum.dart';
+import 'package:clash_for_flutter/app/utils/constants.dart';
 import 'package:dart_json_mapper/dart_json_mapper.dart';
 import 'package:settings_yaml/settings_yaml.dart';
 
 @JsonSerializable()
 class Config {
-  @JsonProperty(name: "port")
-  int? port;
-  @JsonProperty(name: "socks-port")
-  int? socksPort;
+  static final String _path = "${Constants.homeDir.path}${Constants.clashConfig}";
+
+  @JsonProperty(name: "mixed-port")
+  int? mixedPort;
   @JsonProperty(name: "redir-port")
   int? redirPort;
   @JsonProperty(name: "tproxy-port")
   int? tproxyPort;
-  @JsonProperty(name: "mixed-port")
-  int? mixedPort;
   @JsonProperty(name: "allow-lan")
   bool? allowLan;
   @JsonProperty(name: "mode")
@@ -22,23 +24,24 @@ class Config {
   LogLevel? logLevel;
   @JsonProperty(name: "ipv6")
   bool? ipv6;
+  @JsonProperty(name: "tun")
+  Tun? tun;
+
+  get tunEnable => tun?.enable;
 
   Config({
-    this.port,
-    this.socksPort,
+    this.mixedPort,
     this.redirPort,
     this.tproxyPort,
-    this.mixedPort,
     this.allowLan,
     this.mode,
     this.logLevel,
     this.ipv6,
+    this.tun,
   });
 
-  Future<void> saveFile(String path) {
-    var yaml = SettingsYaml.load(pathToSettings: path);
-    if (port != null) (yaml["port"] = port);
-    if (socksPort != null) (yaml["socks-port"] = socksPort);
+  Future<void> saveFile() {
+    var yaml = SettingsYaml.load(pathToSettings: _path);
     if (redirPort != null) (yaml["redir-port"] = redirPort);
     if (tproxyPort != null) (yaml["tproxy-port"] = tproxyPort);
     if (mixedPort != null) (yaml["mixed-port"] = mixedPort);
@@ -50,8 +53,6 @@ class Config {
   }
 
   Config copyWith({
-    int? port,
-    int? socksPort,
     int? redirPort,
     int? tproxyPort,
     int? mixedPort,
@@ -61,8 +62,6 @@ class Config {
     bool? ipv6,
   }) {
     return Config(
-      port: port ?? this.port,
-      socksPort: socksPort ?? this.socksPort,
       redirPort: redirPort ?? this.redirPort,
       tproxyPort: tproxyPort ?? this.tproxyPort,
       mixedPort: mixedPort ?? this.mixedPort,
@@ -73,26 +72,21 @@ class Config {
     );
   }
 
-  factory Config.defaultConfig() => Config(mixedPort: 7890);
-
-  factory Config.formYamlFile(String path) {
-    var yaml = SettingsYaml.load(pathToSettings: path);
+  Config copy(Config? that) {
+    that ??= this;
     return Config(
-      port: yaml["port"],
-      socksPort: yaml["socks-port"],
-      redirPort: yaml["redir-port"],
-      tproxyPort: yaml["tproxy-port"],
-      mixedPort: yaml["mixed-port"] ?? 7890,
-      allowLan: yaml["allow-lan"],
-      mode: Mode.values.singleWhere(
-        (m) => m.value == yaml["mode"],
-        orElse: () => Mode.Rule,
-      ),
-      logLevel: LogLevel.values.singleWhere(
-        (m) => m.value == yaml["log-level"],
-        orElse: () => LogLevel.info,
-      ),
-      ipv6: yaml["ipv6"],
+      redirPort: that.redirPort,
+      tproxyPort: that.tproxyPort,
+      mixedPort: that.mixedPort,
+      allowLan: that.allowLan,
+      mode: that.mode,
+      logLevel: that.logLevel,
+      ipv6: that.ipv6,
+      tun: that.tun,
     );
   }
+
+  static bool? fileExist() => File(_path).existsSync();
+
+  factory Config.defaultConfig() => Config(mixedPort: 7890);
 }

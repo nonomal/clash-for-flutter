@@ -4,32 +4,52 @@ import 'package:clash_for_flutter/app/bean/profile_file_bean.dart';
 import 'package:clash_for_flutter/app/bean/profile_url_bean.dart';
 import 'package:clash_for_flutter/app/component/loading_component.dart';
 import 'package:clash_for_flutter/app/component/sys_app_bar.dart';
-import 'package:clash_for_flutter/app/enum/type_enum.dart';
+import 'package:clash_for_flutter/app/pages/profiles/profile_item.dart';
 import 'package:clash_for_flutter/app/pages/profiles/profiles_controller.dart';
-import 'package:clash_for_flutter/app/source/global_config.dart';
-import 'package:clash_for_flutter/app/utils/utils.dart';
+import 'package:clash_for_flutter/app/source/app_config.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:path/path.dart' hide context;
-
-enum MenuType { Update, Remove, Edit, Name }
-
-final dateFormat = DateFormat("yyyy/MM/dd HH:mm");
 
 /// 配置文件页
 class ProfilesPage extends StatefulWidget {
   const ProfilesPage({super.key});
 
   @override
-  ModularState<ProfilesPage, ProfileController> createState() => _ProfilesPageState();
+  State<ProfilesPage> createState() => _ProfilesPageState();
 }
 
-class _ProfilesPageState extends ModularState<ProfilesPage, ProfileController> {
-  final _config = Modular.get<GlobalConfig>();
-  String? _loadingFile;
+class _ProfilesPageState extends State<ProfilesPage> {
+  final _config = Modular.get<AppConfig>();
+  final ProfileController _controller = Modular.get<ProfileController>();
+  final ScrollController _scrollController = ScrollController();
+  final List<String> _loadingList = [];
+  bool _showFab = true;
+
+  @override
+  initState() {
+    super.initState();
+    _scrollController.addListener(_scrollListener);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollListener() {
+    if (_scrollController.position.userScrollDirection == ScrollDirection.reverse && _showFab) {
+      setState(() => _showFab = false);
+    }
+    if (_scrollController.position.userScrollDirection == ScrollDirection.forward && !_showFab) {
+      setState(() => _showFab = true);
+    }
+  }
 
   showAddProfiles() {
     Asuka.showModalBottomSheet(
@@ -79,7 +99,7 @@ class _ProfilesPageState extends ModularState<ProfilesPage, ProfileController> {
   addProfile(ProfileBase profile) {
     var loading = Loading.builder();
     Asuka.addOverlay(loading);
-    controller.addProfile(profile).then((_) => loading.remove()).catchError((e) {
+    _controller.addProfile(profile).then((_) => loading.remove()).catchError((e) {
       loading.remove();
       Asuka.showSnackBar(SnackBar(content: Text("导入异常: $e")));
     });
@@ -167,13 +187,13 @@ class _ProfilesPageState extends ModularState<ProfilesPage, ProfileController> {
       dialogPickerFile(
         label: "文件",
         initialValue: profile.path,
-        onOk: (v) => controller.edit(profile..path = v),
+        onOk: (v) => _controller.edit(profile..path = v),
       );
     } else if (profile is ProfileURL) {
       dialogInputValue(
         label: "URL",
         initialValue: profile.url,
-        onOk: (v) => controller.edit(profile..url = v),
+        onOk: (v) => _controller.edit(profile..url = v),
       );
     }
   }
@@ -182,16 +202,15 @@ class _ProfilesPageState extends ModularState<ProfilesPage, ProfileController> {
     dialogInputValue(
       label: "名称",
       initialValue: profile.name,
-      onOk: (v) => controller.edit(profile..name = v),
+      onOk: (v) => _controller.edit(profile..name = v),
     );
   }
 
   upgradeProfile(String file) {
-    setState(() => _loadingFile = file);
-    controller.updateProfile(file).then((_) => setState(() => _loadingFile = null)).catchError((err) {
-      setState(() => _loadingFile = null);
+    setState(() => _loadingList.add(file));
+    _controller.updateProfile(file).catchError((err) {
       Asuka.showSnackBar(SnackBar(content: Text(err.message ?? "未知异常")));
-    });
+    }).then((value) => setState(() => _loadingList.remove(file)));
   }
 
   removeProfile(String file) {
@@ -199,138 +218,72 @@ class _ProfilesPageState extends ModularState<ProfilesPage, ProfileController> {
       content: const Text("确定移除？"),
       action: SnackBarAction(
         label: "确定",
-        onPressed: () => controller.removeProfile(file),
+        onPressed: () => _controller.removeProfile(file),
       ),
     ));
   }
 
-  getResidual(ProfileBase? profile) {
+  Widget _buildPanel(int index) {
+    var profile = _config.profiles[index];
+    var show = ProfileShow(
+      title: profile.name,
+      type: profile.type,
+      lastUpdate: profile.time,
+    );
     if (profile is ProfileURL) {
       var userinfo = profile.userinfo;
       if (userinfo != null) {
-        var download = userinfo.download ?? 0;
-        var total = userinfo.total ?? 0;
-        var progress = download / total;
-        var color = Theme.of(context).primaryColor.withOpacity(0.7);
-        var textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(color: color);
-        var expire = DateTime.fromMillisecondsSinceEpoch((userinfo.expire ?? 0) * 1000);
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 5),
-                  child: Text(
-                    "${dataformat(download)}/${dataformat(total)}",
-                    style: textStyle,
-                  ),
-                ),
-                SizedBox(
-                  width: 100,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.black12,
-                    color: Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-            Text("Expire: ${dateFormat.format(expire)}", style: textStyle),
-          ],
-        );
+        show
+          ..expire = userinfo.expire == null ? null : DateTime.fromMillisecondsSinceEpoch((userinfo.expire!) * 1000)
+          ..use = (userinfo.upload ?? 0) + (userinfo.download ?? 0)
+          ..total = userinfo.total ?? 0;
       }
     }
-    return Container();
+    return Observer(
+      builder: (_) => SelectableCard(
+        profile: show,
+        selected: profile.file == _config.selectedFile,
+        isLoading: _loadingList.contains(profile.file),
+        onTap: () => _controller.select(profile.file),
+        onUpdate: () => upgradeProfile(profile.file),
+        onEdit: () => edit(profile),
+        onRemove: () => removeProfile(profile.file),
+        onChangeName: () => changeName(profile),
+      ),
+    );
   }
 
   @override
-  Widget build(_) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const SysAppBar(title: Text("订阅")),
-      body: Observer(
-        builder: (_) {
-          return ListView.builder(
-            itemCount: _config.profiles.length,
-            itemBuilder: (_, i) {
-              var profile = _config.profiles[i];
-              return Observer(
-                builder: (_) => ListTile(
-                  selected: profile.file == _config.selectedFile,
-                  onTap: () => controller.select(profile.file),
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [Text(profile.name), getResidual(profile)],
-                  ),
-                  subtitle: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(profile.type.value),
-                      Text(dateFormat.format(profile.time)),
-                    ],
-                  ),
-                  trailing: _loadingFile != null && _loadingFile == profile.file
-                      ? const SizedBox(
-                          width: 25,
-                          height: 25,
-                          child: CircularProgressIndicator(),
-                        )
-                      : PopupMenuButton(
-                          onSelected: (type) {
-                            switch (type) {
-                              case MenuType.Edit:
-                                edit(profile);
-                                break;
-                              case MenuType.Update:
-                                upgradeProfile(profile.file);
-                                break;
-                              case MenuType.Remove:
-                                removeProfile(profile.file);
-                                break;
-                              case MenuType.Name:
-                                changeName(profile);
-                                break;
-                            }
-                          },
-                          itemBuilder: (_) {
-                            var list = <PopupMenuEntry<MenuType>>[
-                              const PopupMenuItem(
-                                value: MenuType.Name,
-                                child: Text("修改名称"),
-                              ),
-                              const PopupMenuItem(
-                                value: MenuType.Edit,
-                                child: Text("修改源"),
-                              ),
-                              const PopupMenuItem(
-                                value: MenuType.Remove,
-                                child: Text("移除"),
-                              ),
-                            ];
-                            if (profile.type == ProfileType.URL) {
-                              list.insert(
-                                0,
-                                const PopupMenuItem(
-                                  value: MenuType.Update,
-                                  child: Text("更新"),
-                                ),
-                              );
-                            }
-                            return list;
-                          },
-                        ),
-                ),
-              );
-            },
+      appBar: const SysAppBar(
+        title: Text('订阅'),
+      ),
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final crossAxisCount = constraints.maxWidth < 460 ? 1 : 2;
+
+          return Observer(
+            builder: (_) => MasonryGridView.count(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: 20,
+              crossAxisSpacing: 20,
+              padding: const EdgeInsets.all(20),
+              itemCount: _config.profiles.length,
+              itemBuilder: (BuildContext context, int index) {
+                return _buildPanel(index);
+              },
+            ),
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: "新增",
-        onPressed: showAddProfiles,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _showFab
+          ? FloatingActionButton(
+              tooltip: "新增",
+              onPressed: showAddProfiles,
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }

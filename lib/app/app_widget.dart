@@ -1,5 +1,5 @@
 import 'package:asuka/asuka.dart';
-import 'package:flutter/material.dart' hide MenuItem;
+import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 
@@ -14,7 +14,7 @@ class _AppWidgetState extends State<AppWidget> {
   @override
   Widget build(BuildContext context) {
     var app = MaterialApp.router(
-      title: "Clash For Flutter",
+      title: "Clash for Flutter",
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans', countryCode: "CN")],
       locale: const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans', countryCode: "CN"),
@@ -22,8 +22,7 @@ class _AppWidgetState extends State<AppWidget> {
         useMaterial3: true,
         primarySwatch: Colors.blue,
       ),
-      routeInformationParser: Modular.routeInformationParser,
-      routerDelegate: Modular.routerDelegate,
+      routerConfig: Modular.routerConfig,
       builder: Asuka.builder,
       // navigatorObservers: [Asuka.asukaHeroController],
     );

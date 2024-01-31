@@ -5,16 +5,34 @@ import 'package:clash_for_flutter/app/bean/profile_base_bean.dart';
 import 'package:clash_for_flutter/app/bean/profile_file_bean.dart';
 import 'package:clash_for_flutter/app/bean/profile_url_bean.dart';
 import 'package:clash_for_flutter/app/enum/type_enum.dart';
-import 'package:clash_for_flutter/app/source/global_config.dart';
+import 'package:clash_for_flutter/app/source/app_config.dart';
 import 'package:clash_for_flutter/app/source/request.dart';
 import 'package:clash_for_flutter/app/utils/constants.dart';
 import 'package:dart_json_mapper/dart_json_mapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 
+class ProfileShow {
+  final String title;
+  final ProfileType type;
+  int? use;
+  int? total;
+  DateTime? expire;
+  final DateTime lastUpdate;
+
+  ProfileShow({
+    required this.title,
+    required this.type,
+    this.use,
+    this.total,
+    this.expire,
+    required this.lastUpdate,
+  });
+}
+
 class ProfileController {
   final _request = Modular.get<Request>();
-  final _config = Modular.get<GlobalConfig>();
+  final _config = Modular.get<AppConfig>();
 
   Future<void> addProfile(ProfileBase profile) {
     Future<ProfileBase> handle;
@@ -69,7 +87,7 @@ class ProfileController {
     } else {
       _config.setState(profiles: tempList);
     }
-    File("${_config.configDir.path}${Constants.profilesPath}/$file").delete();
+    File("${Constants.homeDir.path}${Constants.profilesPath}/$file").delete();
   }
 
   /// 更新源(仅限URL)
@@ -97,6 +115,6 @@ class ProfileController {
     } else {
       _config.setState(profiles: tempList);
     }
-    File("${_config.configDir.path}${Constants.profilesPath}/$file").delete();
+    File("${Constants.homeDir.path}${Constants.profilesPath}/$file").delete();
   }
 }
